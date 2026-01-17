@@ -1,95 +1,90 @@
-import streamlit as st
+from flask import Flask, render_template, request, jsonify
+from qiskit import QuantumCircuit
+from qiskit_aer import Aer
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Fixes plotting in Flask
 import matplotlib.pyplot as plt
-import random
+import os
 
+app = Flask(__name__)
 
-st.set_page_config(
-    page_title="Quantum Coin Flip Simulator",
-    page_icon="🪙",
+# Quantum simulator
+simulator = Aer.get_backend('aer_simulator')
 
-)
+# Ensure static folder exists
+if not os.path.exists("static"):
+    os.mkdir("static")
 
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-st.markdown(
-    """
-    <style>
-    body {
-        background: linear-gradient(135deg, #667eea, #764ba2);
-    }
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    data = request.json
+    theta_deg = float(data.get("theta", 0))
+    theta = np.deg2rad(theta_deg)
 
-    .glass-card {
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        border-radius: 20px;
-        padding: 30px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        color: white;
-    }
+    # Quantum circuit
+    qc = QuantumCircuit(1, 1)
+    qc.ry(theta, 0)
+    qc.measure(0, 0)
 
-    h1, h2, h3, p {
-        color: white;
-        text-align: center;
-    }
+    # Try generating circuit diagram
+    diagram_path = os.path.join("static", "quantum_circuit.png")
+    try:
+        qc.draw(output='mpl', filename=diagram_path)
+    except Exception:
+        diagram_path = None  # Skip if pylatexenc not installed
 
-    .stButton button {
-        background: rgba(255, 255, 255, 0.25);
-        color: white;
-        border-radius: 12px;
-        padding: 10px 20px;
-        border: none;
-        font-size: 16px;
-        transition: 0.3s;
-    }
+    # Run simulation
+    shots = 5000
+    job = simulator.run(qc, shots=shots)
+    result = job.result()
+    counts = result.get_counts()
+    prob_0 = counts.get('0', 0)/shots
+    prob_1 = counts.get('1', 0)/shots
 
-    .stButton button:hover {
-        background: rgba(255, 255, 255, 0.4);
-    }
+    # Debug prints
+    print(f"Theta: {theta_deg}° | Counts: {counts} | Probabilities: {prob_0:.3f}, {prob_1:.3f}")
 
-    .stSlider > div {
-        color: white;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+    # Generate probability plot
+    plt.style.use('dark_background')
+    plt.figure(figsize=(6,4))
+    plt.plot([theta_deg], [prob_0], 'o', label='|0⟩', color='#FFD700', markersize=10)
+    plt.plot([theta_deg], [prob_1], 'o', label='|1⟩', color='#FF8C00', markersize=10)
+    plt.xlim(0,180)
+    plt.ylim(0,1)
+    plt.xlabel("Theta (degrees)")
+    plt.ylabel("Probability")
+    plt.title("Superposition Strength Explorer")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plot_path = os.path.join("static", "superposition_plot.png")
+    plt.savefig(plot_path)
+    plt.close()
 
+    # Determine superposition type
+    if theta_deg == 0:
+        state_desc = "Classical State |0⟩"
+    elif theta_deg == 180:
+        state_desc = "Classical State |1⟩"
+    elif theta_deg == 90:
+        state_desc = "Maximum Superposition "
+    elif 0 < theta_deg < 90:
+        state_desc = "Weak Superposition "
+    else:
+        state_desc = "Collapsing toward |1⟩"
 
-def quantum_coin_flip(shots=1000):
-    
-    counts = {'0': 0, '1': 0}
-    for _ in range(shots):
-        outcome = random.choice(['0', '1'])
-        counts[outcome] += 1
-    return counts
+    return jsonify({
+        "prob_0": round(prob_0, 3),
+        "prob_1": round(prob_1, 3),
+        "plot_path": plot_path,
+        "diagram_path": diagram_path,
+        "state_desc": state_desc
+    })
 
-st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-
-st.title("🪙 Quantum Coin Flip Simulator")
-st.write("Simulate a quantum coin flip using superposition (50/50 probability).")
-st.write("Fully compatible with **Python 3.12** — no Qiskit or Aer required.")
-
-shots = st.slider(
-    "Number of Flips",
-    min_value=100,
-    max_value=5000,
-    value=1000,
-    step=100
-)
-
-if st.button("🔄 Flip Coin"):
-    counts = quantum_coin_flip(shots)
-
-    st.subheader("📊 Measurement Results")
-    st.write(f"**Heads (0):** {counts['0']}")
-    st.write(f"**Tails (1):** {counts['1']}")
-
-    fig, ax = plt.subplots()
-    ax.bar(counts.keys(), counts.values())
-    ax.set_xlabel("Outcome")
-    ax.set_ylabel("Count")
-    ax.set_title("Quantum Coin Flip Results")
-
-    st.pyplot(fig)
-
-st.markdown("</div>", unsafe_allow_html=True)
+if __name__ == "__main__":
+    app.run(debug=True)

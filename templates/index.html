@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum Superposition Explorer</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<!-- Spinning quantum galaxy background -->
+<div class="quantum-bg">
+    <div class="ring ring1"></div>
+    <div class="ring ring2"></div>
+    <div class="ring ring3"></div>
+</div>
+
+<div class="container">
+    <h1>Superposition Strength Explorer</h1>
+    <p class="subtitle">Classical → Quantum → Classical</p>
+
+    <div class="card">
+        <label>Rotation Angle θ (degrees)</label>
+        <input type="range" id="theta" min="0" max="180" value="0" oninput="updateSlider(this.value)">
+        <span id="theta-value">0</span>°
+        <button onclick="analyzeTheta()">Analyze</button>
+        <p id="result"></p>
+        <img id="plot" style="margin-top:20px; width:90%; display:none;">
+        <img id="diagram" style="margin-top:20px; width:90%; display:none;">
+    </div>
+
+    <div class="info">
+        <h3>Key Experiment</h3>
+        <ul>
+            <li>0° → Classical |0⟩</li>
+            <li>45° → Weak superposition</li>
+            <li>90° → Maximum superposition</li>
+            <li>180° → Classical |1⟩</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+function updateSlider(val){
+    document.getElementById("theta-value").innerText = val;
+}
+
+function analyzeTheta(){
+    const theta = document.getElementById("theta").value;
+
+    fetch("/analyze", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({theta:theta})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        // Display probabilities + superposition type
+        document.getElementById("result").innerText =
+            `P(|0⟩)=${data.prob_0} | P(|1⟩)=${data.prob_1} \n${data.state_desc}`;
+
+        // Show probability plot
+        const plot = document.getElementById("plot");
+        plot.src = data.plot_path + "?t=" + new Date().getTime();
+        plot.style.display = "block";
+
+        // Show quantum circuit diagram if available
+        const diagram = document.getElementById("diagram");
+        if(data.diagram_path){
+            diagram.src = data.diagram_path + "?t=" + new Date().getTime();
+            diagram.style.display = "block";
+        } else {
+            diagram.style.display = "none";
+        }
+    });
+}
+</script>
+
+</body>
+</html>
